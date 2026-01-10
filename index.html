@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown 即時編輯器 (含 KaTeX 支援)</title>
+    
+    <!-- 引入必要的樣式庫 -->
+    <!-- KaTeX CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <!-- Highlight.js CSS (程式碼高亮) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    
+    <style>
+        :root {
+            --bg-color: #f4f4f4;
+            --editor-bg: #1e1e1e;
+            --editor-text: #d4d4d4;
+            --preview-bg: #ffffff;
+            --border-color: #ddd;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-color);
+        }
+
+        header {
+            background-color: #333;
+            color: white;
+            padding: 0 20px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        h1 { margin: 0; font-size: 1.2rem; }
+
+        .toolbar button {
+            background: #555;
+            border: none;
+            color: white;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        .toolbar button:hover { background: #666; }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            height: calc(100vh - 50px);
+            overflow: hidden;
+        }
+
+        /* 編輯區樣式 */
+        #editor-container {
+            width: 50%;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border-color);
+        }
+
+        textarea#source-input {
+            width: 100%;
+            height: 100%;
+            border: none;
+            resize: none;
+            padding: 20px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 16px;
+            line-height: 1.6;
+            background-color: var(--editor-bg);
+            color: var(--editor-text);
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        /* 預覽區樣式 */
+        #preview-container {
+            width: 50%;
+            padding: 20px;
+            overflow-y: auto;
+            background-color: var(--preview-bg);
+            box-sizing: border-box;
+        }
+
+        /* Markdown 內容樣式優化 */
+        .markdown-body {
+            line-height: 1.6;
+            color: #333;
+        }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3 { border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
+        .markdown-body code { background-color: rgba(27,31,35,.05); padding: .2em .4em; border-radius: 3px; font-family: monospace; }
+        .markdown-body pre code { background-color: transparent; padding: 0; }
+        .markdown-body blockquote { border-left: 4px solid #dfe2e5; color: #6a737d; padding-left: 1em; margin-left: 0; }
+        .markdown-body img { max-width: 100%; }
+        
+        /* 針對 KaTeX 區塊的微調 */
+        .katex-display { overflow-x: auto; overflow-y: hidden; }
+
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Markdown 編輯器</h1>
+    <div class="toolbar">
+        <button id="clear-btn">清空</button>
+        <button id="copy-html-btn">複製 HTML</button>
+    </div>
+</header>
+
+<div class="main-container">
+    <div id="editor-container">
+        <textarea id="source-input" placeholder="在此輸入 Markdown..."></textarea>
+    </div>
+    <div id="preview-container" class="markdown-body">
+        <!-- 預覽內容將顯示於此 -->
+    </div>
+</div>
+
+<!-- 引入 JS 庫 -->
+<!-- Marked.js -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- DOMPurify (安全性) -->
+<script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+<!-- KaTeX -->
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<!-- Highlight.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+<script>
+    // 1. 初始化設定
+    const sourceInput = document.getElementById('source-input');
+    const previewContainer = document.getElementById('preview-container');
+
+    // 設定 Marked 選項 (啟用 Highlight.js)
+    marked.setOptions({
+        highlight: function(code, lang) {
+            const language = highlight.getLanguage(lang) ? lang : 'plaintext';
+            return highlight.highlight(code, { language }).value;
+        },
+        langPrefix: 'hljs language-'
+    });
+
+    // 2. 整合 KaTeX 的 Custom Renderer 
+    // (邏輯參考自你提供的 popup.js，確保數學公式相容性)
+    const renderer = {
+        codespan(token) {
+            const codeText = typeof token === 'string' ? token : (token.text || '');
+
+            // 處理 `$$...$$` (由下方的 pre-processor 轉換而來)
+            if (codeText.startsWith('$$') && codeText.endsWith('$$')) {
+                try {
+                    const tex = codeText.substring(2, codeText.length - 2);
+                    return katex.renderToString(tex, { throwOnError: false, displayMode: false });
+                } catch (e) {
+                    console.error("KaTeX inline error:", e);
+                    return `<code>${codeText}</code>`;
+                }
+            } 
+            // 處理 `$ ... $`
+            else if (codeText.startsWith('$') && codeText.endsWith('$')) {
+                 try {
+                    const tex = codeText.substring(1, codeText.length - 1);
+                    return katex.renderToString(tex, { throwOnError: false, displayMode: false });
+                } catch (e) {
+                    return `<code>${codeText}</code>`;
+                }
+            }
+            return false; // 交回給預設處理
+        },
+        code(token) {
+            // marked v12+ token 結構改變，這裡做相容性處理
+            const code = token.text || token;
+            const lang = token.lang || '';
+            
+            if (lang === 'math') {
+                try {
+                    return `<p>${katex.renderToString(code, { throwOnError: false, displayMode: true })}</p>`;
+                } catch (e) {
+                    return `<pre><code>${code}</code></pre>`;
+                }
+            }
+            return false;
+        }
+    };
+    
+    marked.use({ renderer });
+
+    // 3. 主要渲染函數
+    function renderMarkdown() {
+        const rawInput = sourceInput.value;
+
+        // 保存到 LocalStorage
+        localStorage.setItem('markdown-content', rawInput);
+
+        // 前處理 (Pre-process)：延續你的 popup.js 邏輯
+        // 將 $$...$$ 轉為 ```math 區塊
+        // 將 $...$ 轉為 `$$...$$` 讓 codespan 處理
+        let processedMessage = rawInput
+            .replace(/\$\$([\s\S]+?)\$\$/g, '```math\n$1\n```')
+            .replace(/(^|[^\\])\$([^\n$]+?)\$/g, '$1`$$$2$$`');
+
+        try {
+            // 解析 Markdown
+            const html = marked.parse(processedMessage);
+            // 淨化 HTML (安全性)
+            const cleanHtml = DOMPurify.sanitize(html);
+            // 更新畫面
+            previewContainer.innerHTML = cleanHtml;
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    // 4. 事件監聽
+    sourceInput.addEventListener('input', renderMarkdown);
+
+    // 頁面載入時讀取舊資料
+    document.addEventListener('DOMContentLoaded', () => {
+        const savedContent = localStorage.getItem('markdown-content');
+        if (savedContent) {
+            sourceInput.value = savedContent;
+        } else {
+            // 預設歡迎文字
+            sourceInput.value = 
+`# 歡迎使用 Markdown 編輯器
+
+這是一個支援 **KaTeX** 數學公式與程式碼高亮的編輯器。
+
+## 數學公式測試
+行內公式：$E = mc^2$ 
+獨立公式區塊：
+$$
+\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}
+$$
+
+## 程式碼測試
+\`\`\`javascript
+console.log("Hello, Gemini!");
+\`\`\`
+
+## 功能
+- [x] 即時預覽
+- [x] 自動儲存
+- [x] 安全淨化
+`;
+        }
+        renderMarkdown();
+    });
+
+    // 按鈕功能
+    document.getElementById('clear-btn').addEventListener('click', () => {
+        if(confirm('確定要清空所有內容嗎？')) {
+            sourceInput.value = '';
+            renderMarkdown();
+        }
+    });
+
+    document.getElementById('copy-html-btn').addEventListener('click', () => {
+        const htmlContent = previewContainer.innerHTML;
+        navigator.clipboard.writeText(htmlContent).then(() => {
+            alert('HTML 已複製到剪貼簿！');
+        });
+    });
+
+</script>
+
+</body>
+</html>
