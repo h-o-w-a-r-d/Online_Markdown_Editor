@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Markdown 即時編輯器 (含 KaTeX 支援)</title>
+    <title>Markdown 編輯器</title>
     
-    <!-- 引入必要的樣式庫 -->
     <!-- KaTeX CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-    <!-- Highlight.js CSS (程式碼高亮) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <!-- Highlight.js CSS (VS Code Dark 風格) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/vs2015.min.css">
     
     <style>
         :root {
@@ -60,7 +59,7 @@
             overflow: hidden;
         }
 
-        /* 編輯區樣式 */
+        /* 編輯區 */
         #editor-container {
             width: 50%;
             display: flex;
@@ -83,7 +82,7 @@
             outline: none;
         }
 
-        /* 預覽區樣式 */
+        /* 預覽區 */
         #preview-container {
             width: 50%;
             padding: 20px;
@@ -92,20 +91,32 @@
             box-sizing: border-box;
         }
 
-        /* Markdown 內容樣式優化 */
-        .markdown-body {
-            line-height: 1.6;
-            color: #333;
-        }
-        .markdown-body h1, .markdown-body h2, .markdown-body h3 { border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
-        .markdown-body code { background-color: rgba(27,31,35,.05); padding: .2em .4em; border-radius: 3px; font-family: monospace; }
-        .markdown-body pre code { background-color: transparent; padding: 0; }
+        /* Markdown 樣式 */
+        .markdown-body { line-height: 1.6; color: #333; }
+        .markdown-body h1, .markdown-body h2 { border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
         .markdown-body blockquote { border-left: 4px solid #dfe2e5; color: #6a737d; padding-left: 1em; margin-left: 0; }
         .markdown-body img { max-width: 100%; }
         
-        /* 針對 KaTeX 區塊的微調 */
-        .katex-display { overflow-x: auto; overflow-y: hidden; }
-
+        /* 程式碼區塊樣式 */
+        .markdown-body pre {
+            background-color: #1e1e1e;
+            padding: 16px;
+            border-radius: 6px;
+            overflow: auto;
+        }
+        .markdown-body pre code {
+            background-color: transparent;
+            padding: 0;
+            font-family: 'Consolas', monospace;
+            color: #d4d4d4;
+        }
+        /* 行內代碼 */
+        .markdown-body code:not(pre code) {
+            background-color: rgba(27,31,35,.05);
+            padding: .2em .4em;
+            border-radius: 3px;
+            font-family: monospace;
+        }
     </style>
 </head>
 <body>
@@ -122,50 +133,46 @@
     <div id="editor-container">
         <textarea id="source-input" placeholder="在此輸入 Markdown..."></textarea>
     </div>
-    <div id="preview-container" class="markdown-body">
-        <!-- 預覽內容將顯示於此 -->
-    </div>
+    <div id="preview-container" class="markdown-body"></div>
 </div>
 
-<!-- 引入 JS 庫 -->
-<!-- Marked.js -->
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<!-- DOMPurify (安全性) -->
 <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
-<!-- KaTeX -->
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-<!-- Highlight.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 
 <script>
     const sourceInput = document.getElementById('source-input');
     const previewContainer = document.getElementById('preview-container');
 
-    // ★★★ 關鍵修改：自定義渲染器 ★★★
     const renderer = {
-        // 處理行內程式碼 (包含 $...$ 數學公式)
+        // 1. 處理行內程式碼與公式 ($...$)
         codespan(token) {
             const codeText = typeof token === 'string' ? token : (token.text || '');
+            
+            // 處理雙錢字號
             if (codeText.startsWith('$$') && codeText.endsWith('$$')) {
                 try {
                     const tex = codeText.substring(2, codeText.length - 2);
                     return katex.renderToString(tex, { throwOnError: false, displayMode: false });
                 } catch (e) { return `<code>${codeText}</code>`; }
-            } else if (codeText.startsWith('$') && codeText.endsWith('$')) {
+            } 
+            // 處理單錢字號
+            else if (codeText.startsWith('$') && codeText.endsWith('$')) {
                  try {
                     const tex = codeText.substring(1, codeText.length - 1);
                     return katex.renderToString(tex, { throwOnError: false, displayMode: false });
                 } catch (e) { return `<code>${codeText}</code>`; }
             }
-            return false; // 非數學公式，交回給預設渲染
+            return false;
         },
         
-        // 處理區塊程式碼 (包含 ```math 與一般程式碼)
+        // 2. 處理區塊程式碼 (```math 與一般程式碼)
         code(token) {
             const text = token.text;
             const lang = token.lang;
 
-            // 1. 如果是 math 語言，渲染數學公式
+            // 如果是數學區塊
             if (lang === 'math') {
                 try {
                     return `<p>${katex.renderToString(text, { throwOnError: false, displayMode: true })}</p>`;
@@ -174,15 +181,20 @@
                 }
             }
 
-            // 2. ★★★ 修正點：如果是普通程式碼，手動呼叫 Highlight.js ★★★
-            const language = highlight.getLanguage(lang) ? lang : 'plaintext';
-            try {
-                const highlighted = highlight.highlight(text, { language }).value;
-                return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`;
-            } catch (e) {
-                // 如果高亮失敗，降級顯示
-                return `<pre><code>${text}</code></pre>`;
+            // 一般程式碼：使用 Highlight.js (變數名稱為 hljs)
+            // 這裡修正了錯誤：highlight -> hljs
+            if (typeof hljs !== 'undefined') {
+                const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+                try {
+                    const highlighted = hljs.highlight(text, { language }).value;
+                    return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`;
+                } catch (e) {
+                    console.error('Highlight error:', e);
+                }
             }
+
+            // 降級處理：如果 hljs 沒載入或出錯
+            return `<pre><code>${text}</code></pre>`;
         }
     };
 
@@ -192,7 +204,7 @@
         const rawInput = sourceInput.value;
         localStorage.setItem('markdown-content', rawInput);
 
-        // 前處理：將 $$...$$ 轉為 ```math 區塊，將 $...$ 轉為 `$$...$$`
+        // 前處理：轉換公式格式
         let processedMessage = rawInput
             .replace(/\$\$([\s\S]+?)\$\$/g, '```math\n$1\n```')
             .replace(/(^|[^\\])\$([^\n$]+?)\$/g, '$1`$$$2$$`');
@@ -210,7 +222,19 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         const savedContent = localStorage.getItem('markdown-content');
-        sourceInput.value = savedContent || `# 歡迎使用\n\n## 測試程式碼高亮\n\`\`\`javascript\nconsole.log("Hello World");\nconst x = 10;\n\`\`\`\n\n## 測試公式\n$E=mc^2$`;
+        sourceInput.value = savedContent || `# 歡迎使用
+
+## 測試程式碼高亮
+\`\`\`javascript
+// 這裡應該要有顏色
+function hello() {
+  console.log("Hello World");
+}
+\`\`\`
+
+## 測試數學公式
+$E=mc^2$
+`;
         renderMarkdown();
     });
 
@@ -222,6 +246,5 @@
         navigator.clipboard.writeText(previewContainer.innerHTML).then(() => alert('已複製'));
     });
 </script>
-
 </body>
 </html>
