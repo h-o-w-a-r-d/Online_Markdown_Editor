@@ -138,141 +138,89 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 
 <script>
-    // 1. 初始化設定
     const sourceInput = document.getElementById('source-input');
     const previewContainer = document.getElementById('preview-container');
 
-    // 設定 Marked 選項 (啟用 Highlight.js)
-    marked.setOptions({
-        highlight: function(code, lang) {
-            const language = highlight.getLanguage(lang) ? lang : 'plaintext';
-            return highlight.highlight(code, { language }).value;
-        },
-        langPrefix: 'hljs language-'
-    });
-
-    // 2. 整合 KaTeX 的 Custom Renderer 
-    // (邏輯參考自你提供的 popup.js，確保數學公式相容性)
+    // ★★★ 關鍵修改：自定義渲染器 ★★★
     const renderer = {
+        // 處理行內程式碼 (包含 $...$ 數學公式)
         codespan(token) {
             const codeText = typeof token === 'string' ? token : (token.text || '');
-
-            // 處理 `$$...$$` (由下方的 pre-processor 轉換而來)
             if (codeText.startsWith('$$') && codeText.endsWith('$$')) {
                 try {
                     const tex = codeText.substring(2, codeText.length - 2);
                     return katex.renderToString(tex, { throwOnError: false, displayMode: false });
-                } catch (e) {
-                    console.error("KaTeX inline error:", e);
-                    return `<code>${codeText}</code>`;
-                }
-            } 
-            // 處理 `$ ... $`
-            else if (codeText.startsWith('$') && codeText.endsWith('$')) {
+                } catch (e) { return `<code>${codeText}</code>`; }
+            } else if (codeText.startsWith('$') && codeText.endsWith('$')) {
                  try {
                     const tex = codeText.substring(1, codeText.length - 1);
                     return katex.renderToString(tex, { throwOnError: false, displayMode: false });
-                } catch (e) {
-                    return `<code>${codeText}</code>`;
-                }
+                } catch (e) { return `<code>${codeText}</code>`; }
             }
-            return false; // 交回給預設處理
+            return false; // 非數學公式，交回給預設渲染
         },
+        
+        // 處理區塊程式碼 (包含 ```math 與一般程式碼)
         code(token) {
-            // marked v12+ token 結構改變，這裡做相容性處理
-            const code = token.text || token;
-            const lang = token.lang || '';
-            
+            const text = token.text;
+            const lang = token.lang;
+
+            // 1. 如果是 math 語言，渲染數學公式
             if (lang === 'math') {
                 try {
-                    return `<p>${katex.renderToString(code, { throwOnError: false, displayMode: true })}</p>`;
+                    return `<p>${katex.renderToString(text, { throwOnError: false, displayMode: true })}</p>`;
                 } catch (e) {
-                    return `<pre><code>${code}</code></pre>`;
+                    return `<pre><code>${text}</code></pre>`;
                 }
             }
-            return false;
+
+            // 2. ★★★ 修正點：如果是普通程式碼，手動呼叫 Highlight.js ★★★
+            const language = highlight.getLanguage(lang) ? lang : 'plaintext';
+            try {
+                const highlighted = highlight.highlight(text, { language }).value;
+                return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`;
+            } catch (e) {
+                // 如果高亮失敗，降級顯示
+                return `<pre><code>${text}</code></pre>`;
+            }
         }
     };
-    
+
     marked.use({ renderer });
 
-    // 3. 主要渲染函數
     function renderMarkdown() {
         const rawInput = sourceInput.value;
-
-        // 保存到 LocalStorage
         localStorage.setItem('markdown-content', rawInput);
 
-        // 前處理 (Pre-process)：延續你的 popup.js 邏輯
-        // 將 $$...$$ 轉為 ```math 區塊
-        // 將 $...$ 轉為 `$$...$$` 讓 codespan 處理
+        // 前處理：將 $$...$$ 轉為 ```math 區塊，將 $...$ 轉為 `$$...$$`
         let processedMessage = rawInput
             .replace(/\$\$([\s\S]+?)\$\$/g, '```math\n$1\n```')
             .replace(/(^|[^\\])\$([^\n$]+?)\$/g, '$1`$$$2$$`');
 
         try {
-            // 解析 Markdown
             const html = marked.parse(processedMessage);
-            // 淨化 HTML (安全性)
             const cleanHtml = DOMPurify.sanitize(html);
-            // 更新畫面
             previewContainer.innerHTML = cleanHtml;
         } catch (err) {
             console.error(err);
         }
     }
 
-    // 4. 事件監聽
     sourceInput.addEventListener('input', renderMarkdown);
 
-    // 頁面載入時讀取舊資料
     document.addEventListener('DOMContentLoaded', () => {
         const savedContent = localStorage.getItem('markdown-content');
-        if (savedContent) {
-            sourceInput.value = savedContent;
-        } else {
-            // 預設歡迎文字
-            sourceInput.value = 
-`# 歡迎使用 Markdown 編輯器
-
-這是一個支援 **KaTeX** 數學公式與程式碼高亮的編輯器。
-
-## 數學公式測試
-行內公式：$E = mc^2$ 
-獨立公式區塊：
-$$
-\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}
-$$
-
-## 程式碼測試
-\`\`\`javascript
-console.log("Hello, Gemini!");
-\`\`\`
-
-## 功能
-- [x] 即時預覽
-- [x] 自動儲存
-- [x] 安全淨化
-`;
-        }
+        sourceInput.value = savedContent || `# 歡迎使用\n\n## 測試程式碼高亮\n\`\`\`javascript\nconsole.log("Hello World");\nconst x = 10;\n\`\`\`\n\n## 測試公式\n$E=mc^2$`;
         renderMarkdown();
     });
 
-    // 按鈕功能
     document.getElementById('clear-btn').addEventListener('click', () => {
-        if(confirm('確定要清空所有內容嗎？')) {
-            sourceInput.value = '';
-            renderMarkdown();
-        }
+        if(confirm('清空？')) { sourceInput.value = ''; renderMarkdown(); }
     });
-
+    
     document.getElementById('copy-html-btn').addEventListener('click', () => {
-        const htmlContent = previewContainer.innerHTML;
-        navigator.clipboard.writeText(htmlContent).then(() => {
-            alert('HTML 已複製到剪貼簿！');
-        });
+        navigator.clipboard.writeText(previewContainer.innerHTML).then(() => alert('已複製'));
     });
-
 </script>
 
 </body>
