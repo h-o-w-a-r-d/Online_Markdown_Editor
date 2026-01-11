@@ -1,9 +1,7 @@
 // js/markdown.js
 
 export function configureMarked() {
-    // 設定 Highlight.js 的渲染器
     // 這裡只負責處理 "標準" 的程式碼區塊高亮
-    // 數學公式的處理邏輯我們移到 parseMarkdown 函式中
     const renderer = {
         code(token) {
             const text = token.text;
@@ -26,60 +24,65 @@ export function configureMarked() {
 export function parseMarkdown(rawInput) {
     if (!rawInput) return "";
 
-    // --- 第一步：保護程式碼區塊 (Masking) ---
-    // 為了避免數學公式解析器誤判程式碼區塊內的 $ 或 $$，我們先將程式碼挖空並儲存
+    let processed = rawInput;
     const codeMap = new Map();
     let maskCounter = 0;
 
-    // 1.1 保護區塊程式碼 (``` ... ```)
-    // Regex: 尋找以 ``` 開頭和結尾的區塊，允許換行
-    let processed = rawInput.replace(/(\n|^)```[\s\S]*?```/g, (match) => {
+    // --- 第一步：保護機制 (Masking) ---
+    
+    // 1.1 保護「程式碼區塊」(```...```)
+    processed = processed.replace(/(\n|^)```[\s\S]*?```/g, (match) => {
         const key = `__MASKED_BLOCK_${maskCounter++}__`;
         codeMap.set(key, match);
-        return key; // 替換成佔位符
+        return key;
     });
 
-    // 1.2 保護行內程式碼 (` ... `)
-    // Regex: 匹配一對或多對反引號包裹的內容
+    // 1.2 保護「行內程式碼」(`...`)
     processed = processed.replace(/(`+)(.*?)\1/g, (match) => {
         const key = `__MASKED_INLINE_${maskCounter++}__`;
         codeMap.set(key, match);
         return key;
     });
 
-    // --- 第二步：渲染數學公式 (Rendering Math) ---
-    // 現在字串中已經沒有程式碼區塊了，可以放心地轉換 $$ 和 $
-    
-    // 2.1 處理獨立區塊公式 ($$ ... $$)
-    processed = processed.replace(/\$\$([\s\S]+?)\$\$/g, (match, tex) => {
+    // 1.3 保護「跳脫字元」(\$)
+    // 讓使用者可以輸入 \$ 來顯示真正的錢字號，而不會被當成公式
+    processed = processed.replace(/\\\$/g, (match) => {
+        const key = `__MASKED_ESCAPE_${maskCounter++}__`;
+        codeMap.set(key, match);
+        return key;
+    });
+
+    // --- 第二步：渲染數學公式 ---
+
+    // 2.1 嚴格處理「區塊公式」 ($$ ... $$)
+    // 修正點：限制 $$ 必須在「行首」或「換行後」，避免誤判文字中的 "$$"
+    processed = processed.replace(/(^|\n)\$\$([\s\S]+?)\$\$($|\n)/g, (match, prefix, tex, suffix) => {
         try {
-            return katex.renderToString(tex, { 
-                displayMode: true, 
-                throwOnError: false 
-            });
+            const rendered = katex.renderToString(tex, { displayMode: true, throwOnError: false });
+            return prefix + rendered + suffix;
         } catch (e) { return match; }
     });
 
-    // 2.2 處理行內公式 ($ ... $)
+    // 2.2 智慧處理「行內公式」 ($ ... $)
     processed = processed.replace(/\$([^\n]+?)\$/g, (match, tex) => {
+        // 防呆機制：如果內容包含中文(CJK)，且沒有使用 \text 指令，通常代表這是誤判 (例如：使用 '$' 包裹)
+        // 這樣可以避免 KaTeX 報錯並導致後面的公式亂掉
+        if (/[\u4e00-\u9fa5]/.test(tex) && !tex.includes('\\text')) {
+            return match; // 當作一般文字，不渲染
+        }
+
         try {
-            return katex.renderToString(tex, { 
-                displayMode: false, 
-                throwOnError: false 
-            });
+            return katex.renderToString(tex, { displayMode: false, throwOnError: false });
         } catch (e) { return match; }
     });
 
-    // --- 第三步：還原程式碼 (Unmasking) ---
-    // 將剛剛挖掉的程式碼填回去，這樣 Marked.js 才能正確解析它們並進行高亮
+    // --- 第三步：還原保護內容 ---
     codeMap.forEach((value, key) => {
         processed = processed.replace(key, value);
     });
 
     // --- 第四步：Marked 解析 ---
     try {
-        // 這時公式已經變成 HTML 標籤 (KaTeX)，Marked 會把它們當作一般 HTML 保留
-        // 程式碼區塊也已經還原，Marked 會把它們當作程式碼區塊進行高亮
         const html = marked.parse(processed);
         return DOMPurify.sanitize(html);
     } catch (err) {
