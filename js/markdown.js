@@ -1,12 +1,10 @@
 // js/markdown.js
 
 export function configureMarked() {
-    // 這裡只負責處理 "標準" 的程式碼區塊高亮
     const renderer = {
         code(token) {
             const text = token.text;
             const lang = token.lang;
-            
             if (typeof hljs !== 'undefined' && lang) {
                 const language = hljs.getLanguage(lang) ? lang : 'plaintext';
                 try {
@@ -17,7 +15,6 @@ export function configureMarked() {
             return `<pre><code>${text}</code></pre>`;
         }
     };
-
     marked.use({ renderer });
 }
 
@@ -25,68 +22,101 @@ export function parseMarkdown(rawInput) {
     if (!rawInput) return "";
 
     let processed = rawInput;
+    const mathMap = new Map();
     const codeMap = new Map();
-    let maskCounter = 0;
+    let counter = 0;
 
-    // --- 第一步：保護機制 (Masking) ---
+    // ============================================
+    // 步驟 1：保護程式碼 (避免程式碼裡的 $ 被當成公式)
+    // ============================================
+    // 使用純英數字的 Token，避免 Markdown 誤判為粗體或斜體
     
-    // 1.1 保護「程式碼區塊」(```...```)
+    // 1.1 保護區塊程式碼 ```...```
     processed = processed.replace(/(\n|^)```[\s\S]*?```/g, (match) => {
-        const key = `__MASKED_BLOCK_${maskCounter++}__`;
+        const key = `CODEBLOCK${counter++}ENDCODE`; // 改用無特殊符號的代號
         codeMap.set(key, match);
         return key;
     });
 
-    // 1.2 保護「行內程式碼」(`...`)
+    // 1.2 保護行內代碼 `...`
     processed = processed.replace(/(`+)(.*?)\1/g, (match) => {
-        const key = `__MASKED_INLINE_${maskCounter++}__`;
+        const key = `CODEINLINE${counter++}ENDCODE`;
         codeMap.set(key, match);
         return key;
     });
-
-    // 1.3 保護「跳脫字元」(\$)
-    // 讓使用者可以輸入 \$ 來顯示真正的錢字號，而不會被當成公式
+    
+    // 1.3 保護跳脫字元 \$
     processed = processed.replace(/\\\$/g, (match) => {
-        const key = `__MASKED_ESCAPE_${maskCounter++}__`;
+        const key = `ESCAPEDDOLLAR${counter++}END`;
         codeMap.set(key, match);
         return key;
     });
 
-    // --- 第二步：渲染數學公式 ---
-
-    // 2.1 嚴格處理「區塊公式」 ($$ ... $$)
-    // 修正點：限制 $$ 必須在「行首」或「換行後」，避免誤判文字中的 "$$"
+    // ============================================
+    // 步驟 2：提取數學公式 (換成純文字代號)
+    // ============================================
+    
+    // 2.1 區塊公式 $$...$$ (嚴格限制：換行開頭與結尾)
     processed = processed.replace(/(^|\n)\$\$([\s\S]+?)\$\$($|\n)/g, (match, prefix, tex, suffix) => {
-        try {
-            const rendered = katex.renderToString(tex, { displayMode: true, throwOnError: false });
-            return prefix + rendered + suffix;
-        } catch (e) { return match; }
+        const key = `MATHBLOCK${counter++}ENDMATH`; // 純英數字 Token
+        mathMap.set(key, { tex: tex, display: true });
+        // 保留原本的前後換行符號，維持段落結構
+        return prefix + key + suffix; 
     });
 
-    // 2.2 智慧處理「行內公式」 ($ ... $)
+    // 2.2 行內公式 $...$
     processed = processed.replace(/\$([^\n]+?)\$/g, (match, tex) => {
-        // 防呆機制：如果內容包含中文(CJK)，且沒有使用 \text 指令，通常代表這是誤判 (例如：使用 '$' 包裹)
-        // 這樣可以避免 KaTeX 報錯並導致後面的公式亂掉
+        // CJK 防呆
         if (/[\u4e00-\u9fa5]/.test(tex) && !tex.includes('\\text')) {
-            return match; // 當作一般文字，不渲染
+            return match; 
         }
-
-        try {
-            return katex.renderToString(tex, { displayMode: false, throwOnError: false });
-        } catch (e) { return match; }
+        const key = `MATHINLINE${counter++}ENDMATH`; // 純英數字 Token
+        mathMap.set(key, { tex: tex, display: false });
+        return key;
     });
 
-    // --- 第三步：還原保護內容 ---
+    // ============================================
+    // 步驟 3：還原程式碼區塊
+    // ============================================
+    // 讓 Marked 看到 ```code``` 並進行高亮
     codeMap.forEach((value, key) => {
         processed = processed.replace(key, value);
     });
 
-    // --- 第四步：Marked 解析 ---
+    // ============================================
+    // 步驟 4：Marked 解析
+    // ============================================
+    let html = "";
     try {
-        const html = marked.parse(processed);
-        return DOMPurify.sanitize(html);
+        // 這時候公式只是 "MATHINLINE15ENDMATH" 這種普通單字
+        // Marked 不會對它做任何 formatting (因為沒有底線)
+        html = marked.parse(processed);
     } catch (err) {
-        console.error("Parse error:", err);
-        return "";
+        console.error("Markdown parse error:", err);
+        return rawInput;
     }
+
+    // ============================================
+    // 步驟 5：淨化 HTML
+    // ============================================
+    html = DOMPurify.sanitize(html);
+
+    // ============================================
+    // 步驟 6：渲染數學公式 (最後一步)
+    // ============================================
+    // 把代號換成真正的 KaTeX HTML
+    mathMap.forEach((value, key) => {
+        try {
+            const rendered = katex.renderToString(value.tex, {
+                displayMode: value.display,
+                throwOnError: false
+            });
+            // 全域替換
+            html = html.split(key).join(rendered);
+        } catch (e) {
+            html = html.split(key).join(value.tex);
+        }
+    });
+
+    return html;
 }
