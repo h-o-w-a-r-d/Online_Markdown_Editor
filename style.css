@@ -1,1 +1,138 @@
+:root {
+    --bg-color: #f4f4f4;
+    --editor-bg: #1e1e1e;
+    --editor-text: #d4d4d4;
+    --preview-bg: #ffffff;
+    --border-color: #ddd;
+    --toolbar-bg: #333;
+    --toolbar-text: #fff;
+    --status-bar-bg: #2d2d2d;
+    --status-bar-text: #ccc;
+}
 
+body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--bg-color);
+}
+
+/* Header & Toolbar */
+header {
+    background-color: var(--toolbar-bg);
+    color: var(--toolbar-text);
+    padding: 0 15px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    z-index: 10;
+    flex-shrink: 0;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.app-logo { height: 32px; width: auto; }
+h1 { margin: 0; font-size: 1.2rem; white-space: nowrap; }
+
+.toolbar-groups { display: flex; align-items: center; gap: 15px; }
+.tool-group { display: flex; align-items: center; gap: 5px; padding: 0 10px; border-right: 1px solid #555; }
+.tool-group:last-child { border-right: none; }
+
+.toolbar button, .toolbar select, .search-bar button {
+    background: #555;
+    border: 1px solid #666;
+    color: white;
+    padding: 5px 10px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    transition: background 0.2s;
+}
+.toolbar button:hover, .search-bar button:hover { background: #666; }
+.toolbar button:active { transform: translateY(1px); }
+.toolbar select { padding: 4px; background: #555; color: white; }
+
+/* Search Bar */
+#search-bar {
+    background-color: #444;
+    padding: 8px 20px;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid #555;
+    flex-shrink: 0;
+}
+#search-bar input { padding: 5px; border-radius: 3px; border: none; outline: none; }
+.close-btn { background: transparent !important; border: none !important; margin-left: auto; font-size: 1.2rem; }
+
+/* Main Container */
+.main-container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+#editor-container {
+    width: 50%;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-color);
+}
+
+textarea#source-input {
+    width: 100%;
+    height: 100%;
+    border: none;
+    resize: none;
+    padding: 20px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 16px;
+    line-height: 1.6;
+    background-color: var(--editor-bg);
+    color: var(--editor-text);
+    box-sizing: border-box;
+    outline: none;
+}
+
+#preview-container {
+    width: 50%;
+    padding: 20px;
+    overflow-y: auto;
+    background-color: var(--preview-bg);
+    box-sizing: border-box;
+}
+
+/* Status Bar */
+#status-bar {
+    height: 25px;
+    background-color: var(--status-bar-bg);
+    color: var(--status-bar-text);
+    display: flex;
+    align-items: center;
+    padding: 0 15px;
+    font-size: 0.8rem;
+    border-top: 1px solid #444;
+    flex-shrink: 0;
+}
+
+/* File Input */
+#file-input-element { display: none; }
+
+/* Markdown Content Styles */
+.markdown-body { line-height: 1.6; color: #333; }
+.markdown-body h1, .markdown-body h2 { border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
+.markdown-body blockquote { border-left: 4px solid #dfe2e5; color: #6a737d; padding-left: 1em; margin-left: 0; }
+.markdown-body img { max-width: 100%; }
+.markdown-body pre { background-color: #1e1e1e; padding: 16px; border-radius: 6px; overflow: auto; }
+.markdown-body pre code { background-color: transparent; padding: 0; font-family: 'Consolas', monospace; color: #d4d4d4; }
+.markdown-body code:not(pre code) { background-color: rgba(27,31,35,.05); padding: .2em .4em; border-radius: 3px; font-family: monospace; }
