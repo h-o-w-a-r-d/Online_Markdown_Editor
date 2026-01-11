@@ -39,9 +39,5 @@ export function setupFileOperations(editor) {
         URL.revokeObjectURL(url);
     });
 
-    // 複製 HTML
-    document.getElementById('copy-html-btn').addEventListener('click', () => {
-        const preview = document.getElementById('preview-container');
-        navigator.clipboard.writeText(preview.innerHTML).then(() => alert('HTML 已複製'));
-    });
+
 }
