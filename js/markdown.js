@@ -42,9 +42,12 @@ export function configureMarked() {
 }
 
 export function parseMarkdown(rawInput) {
-    // 預處理：將 $$...$$ 轉為 block，將 $...$ 轉為 inline codespan 格式以便 renderer 處理
+    // ★★★ 修正這裡 ★★★
+    // 舊的寫法: .replace(/\$\$([\s\S]+?)\$\$/g, '```math\n$1\n```')
+    // 新的寫法: 增加了 (^|\n) 和 ($|\n) 的檢查，確保 $$ 是獨立存在的
+    
     let processedMessage = rawInput
-        .replace(/\$\$([\s\S]+?)\$\$/g, '```math\n$1\n```')
+        .replace(/(^|\n)\$\$([\s\S]+?)\$\$($|\n)/g, '$1```math\n$2\n```$3')
         .replace(/(^|[^\\])\$([^\n$]+?)\$/g, '$1`$$$2$$`');
 
     try {
