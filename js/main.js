@@ -4,8 +4,18 @@ import { Editor } from './editor.js';
 import { setupFileOperations } from './file.js';
 import { setupSearch } from './search.js';
 
+// ★★★ 新增：引入 Mermaid ★★★
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.12.2/+esm';
+
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. 設定 Markdown 渲染器 (KaTeX, Highlight.js)
+    // ★★★ 新增：初始化 Mermaid ★★★
+    mermaid.initialize({ 
+        startOnLoad: false, // 關閉自動載入，由 Editor 手動觸發
+        theme: 'default',
+        securityLevel: 'loose', // 允許圖表中的 HTML
+    });
+
+    // 1. 設定 Markdown 渲染器
     configureMarked();
 
     // 2. 初始化編輯器核心
@@ -16,13 +26,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const editor = new Editor(sourceInput, previewContainer, wordCountDisplay);
     editor.init();
 
-    // 3. 綁定檔案操作 (開啟、儲存、編碼)
+    // 3. 綁定檔案操作
     setupFileOperations(editor);
 
     // 4. 綁定搜尋取代
     setupSearch(editor);
 
-    // 5. 綁定主要輸入事件與快捷鍵
+    // 5. 綁定事件
     sourceInput.addEventListener('input', () => editor.handleInput());
     
     sourceInput.addEventListener('keydown', (e) => {

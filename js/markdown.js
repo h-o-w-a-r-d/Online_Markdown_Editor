@@ -5,6 +5,13 @@ export function configureMarked() {
         code(token) {
             const text = token.text;
             const lang = token.lang;
+            
+            // ★★★ 新增：Mermaid 攔截處理 ★★★
+            if (lang === 'mermaid') {
+                // 回傳 div 容器，而不是 pre code
+                return `<div class="mermaid">${text}</div>`;
+            }
+
             if (typeof hljs !== 'undefined' && lang) {
                 const language = hljs.getLanguage(lang) ? lang : 'plaintext';
                 try {
@@ -29,11 +36,10 @@ export function parseMarkdown(rawInput) {
     // ============================================
     // 步驟 1：保護程式碼 (避免程式碼裡的 $ 被當成公式)
     // ============================================
-    // 使用純英數字的 Token，避免 Markdown 誤判為粗體或斜體
     
     // 1.1 保護區塊程式碼 ```...```
     processed = processed.replace(/(\n|^)```[\s\S]*?```/g, (match) => {
-        const key = `CODEBLOCK${counter++}ENDCODE`; // 改用無特殊符號的代號
+        const key = `CODEBLOCK${counter++}ENDCODE`; 
         codeMap.set(key, match);
         return key;
     });
@@ -53,24 +59,22 @@ export function parseMarkdown(rawInput) {
     });
 
     // ============================================
-    // 步驟 2：提取數學公式 (換成純文字代號)
+    // 步驟 2：提取數學公式
     // ============================================
     
-    // 2.1 區塊公式 $$...$$ (嚴格限制：換行開頭與結尾)
+    // 2.1 區塊公式 $$...$$
     processed = processed.replace(/(^|\n)\$\$([\s\S]+?)\$\$($|\n)/g, (match, prefix, tex, suffix) => {
-        const key = `MATHBLOCK${counter++}ENDMATH`; // 純英數字 Token
+        const key = `MATHBLOCK${counter++}ENDMATH`;
         mathMap.set(key, { tex: tex, display: true });
-        // 保留原本的前後換行符號，維持段落結構
         return prefix + key + suffix; 
     });
 
     // 2.2 行內公式 $...$
     processed = processed.replace(/\$([^\n]+?)\$/g, (match, tex) => {
-        // CJK 防呆
         if (/[\u4e00-\u9fa5]/.test(tex) && !tex.includes('\\text')) {
             return match; 
         }
-        const key = `MATHINLINE${counter++}ENDMATH`; // 純英數字 Token
+        const key = `MATHINLINE${counter++}ENDMATH`;
         mathMap.set(key, { tex: tex, display: false });
         return key;
     });
@@ -78,7 +82,6 @@ export function parseMarkdown(rawInput) {
     // ============================================
     // 步驟 3：還原程式碼區塊
     // ============================================
-    // 讓 Marked 看到 ```code``` 並進行高亮
     codeMap.forEach((value, key) => {
         processed = processed.replace(key, value);
     });
@@ -88,8 +91,6 @@ export function parseMarkdown(rawInput) {
     // ============================================
     let html = "";
     try {
-        // 這時候公式只是 "MATHINLINE15ENDMATH" 這種普通單字
-        // Marked 不會對它做任何 formatting (因為沒有底線)
         html = marked.parse(processed);
     } catch (err) {
         console.error("Markdown parse error:", err);
@@ -102,16 +103,14 @@ export function parseMarkdown(rawInput) {
     html = DOMPurify.sanitize(html);
 
     // ============================================
-    // 步驟 6：渲染數學公式 (最後一步)
+    // 步驟 6：渲染數學公式
     // ============================================
-    // 把代號換成真正的 KaTeX HTML
     mathMap.forEach((value, key) => {
         try {
             const rendered = katex.renderToString(value.tex, {
                 displayMode: value.display,
                 throwOnError: false
             });
-            // 全域替換
             html = html.split(key).join(rendered);
         } catch (e) {
             html = html.split(key).join(value.tex);
