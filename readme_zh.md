@@ -1,5 +1,5 @@
-# 📝 Markdown Editor ( Markdown 編輯器)
-[English_version](readme.md)
+# 📝 Markdown Editor
+[English version](readme.md)
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![JavaScript](https://img.shields.io/badge/javascript-ES6%2B-yellow.svg)
